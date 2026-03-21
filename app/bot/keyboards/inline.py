@@ -1,35 +1,48 @@
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from hashlib import md5
 
-from app.storage.orders import save_order
+from app.storage.orders import save_order, get_order
 from app.models.order import Order
 
 
-def get_order_keyboard(order: Order) -> InlineKeyboardMarkup:
-    order_id = md5(order.url.encode()).hexdigest()
+def generate_order_id(order: Order) -> str:
+    return md5(order.url.encode()).hexdigest()
+
+
+def get_order_keyboard(order):
+    order_id = generate_order_id(order)
     save_order(order_id, order)
 
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="🔥 Откликнуться",
-                    callback_data=f"reply:{order_id}"
-                ),
-                InlineKeyboardButton(
-                    text="🧠 AI",
-                    callback_data=f"ai:{order_id}"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="❌ Скип",
-                    callback_data=f"skip:{order_id}"
-                ),
-                InlineKeyboardButton(
-                    text="🔗 Открыть",
-                    url=order.url
-                ),
-            ]
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text='🧠 AI',
+                callback_data=f'ai:{order_id}'
+            ),
+            InlineKeyboardButton(
+                text='❌ Skip',
+                callback_data=f'skip:{order_id}'
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text='🔗 Открыть заказ',
+                url=order.url
+            )
         ]
-    )
+    ])
+
+
+def get_ai_keyboard(order_id: str):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text='✅ Отправить',
+                callback_data=f'send:{order_id}'
+            ),
+            InlineKeyboardButton(
+                text='❌ Скип',
+                callback_data=f'skip:{order_id}'
+            )
+        ]
+    ])

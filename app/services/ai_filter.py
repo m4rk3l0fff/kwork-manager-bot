@@ -1,5 +1,8 @@
+from json import loads
 from openai import AsyncOpenAI
 from loguru import logger
+from re import findall, DOTALL
+
 from app.config.settings import OPENROUTER_API_KEY
 from app.models.order import Order
 
@@ -11,228 +14,138 @@ class AIFilter:
             api_key=OPENROUTER_API_KEY,
         )
         self.model = 'deepseek/deepseek-chat'
-        self.system_prompt = (
-            "ЗАДАЧА: выбрать ТОЛЬКО максимально выгодные заказы.\n\n"
 
-            "=== ГЛАВНЫЙ ПРИНЦИП ===\n"
-            "Оценивай ВЫГОДУ = деньги / время / сложность.\n"
-            "НЕ важно сколько платят — важно насколько это быстро и легко делается.\n\n"
-
-            "YES — если это быстрые деньги.\n"
-            "NO — если это долго, сложно или мутно.\n\n"
-
-            "=== ИДЕАЛЬНЫЙ ЗАКАЗ ===\n"
-            "Пример: 'сделать парсер за вечер за 10000'\n"
-            "→ это идеальный YES\n\n"
-
-            "=== ОЦЕНКА ВРЕМЕНИ ===\n"
-            "YES если:\n"
-            "- можно сделать за 1 вечер (1-5 часов) и платят >= 5000\n"
-            "- можно сделать за 1 день и платят >= 7000\n"
-            "- можно сделать за 2-3 дня и платят >= 10000\n\n"
-
-            "NO если:\n"
-            "- займет неделю или больше\n"
-            "- требует долгой поддержки\n"
-            "- непонятно сколько времени займет\n\n"
-
-            "=== ЧТО ОБЫЧНО ВЫГОДНО ===\n"
-            "- парсеры\n"
-            "- боты\n"
-            "- автоматизация\n"
-            "- скрипты\n"
-            "- API / интеграции\n\n"
-
-            "=== ЧТО ОБЫЧНО НЕВЫГОДНО ===\n"
-            "- большие проекты\n"
-            "- доработка чужого проекта\n"
-            "- поддержка\n"
-            "- 'доработать', 'переделать'\n\n"
-
-            "=== ЖЕСТКИЙ ОТСЕВ ===\n"
-            "Всегда NO:\n"
-            "- дизайн (баннеры, логотипы, креативы)\n"
-            "- видео, монтаж\n"
-            "- маркетинг, реклама\n"
-            "- тексты, презентации\n"
-            "- SEO\n"
-            "- поиск клиентов\n\n"
-
-            "=== ПЛОХИЕ СИГНАЛЫ ===\n"
-            "NO если:\n"
-            "- цена < 3000\n"
-            "- откликов > 20\n"
-            "- размытое описание\n\n"
-
-            "=== ВАЖНО ===\n"
-            "Если заказ простой и быстрый, но не идеально описан —\n"
-            "лучше дать YES, чем пропустить выгодный заказ.\n\n"
-
-            "=== ФОРМАТ ОТВЕТА ===\n"
-            "Строго список:\n"
-            "YES\n"
-            "NO\n"
-            "YES\n\n"
-
-            "НИКАКИХ объяснений.\n"
-            "Любой другой формат = ошибка.\n"
-        )
-        self.score_prompt = (
-            "Ты опытный фрилансер-разработчик.\n"
-            "Ты зарабатываешь на быстрых и простых задачах.\n\n"
-
-            "У тебя есть ограничение: 1–3 отклика в день.\n"
-            "Ты выбираешь ТОЛЬКО лучшие заказы.\n\n"
-
-            "=== ТВОЯ СПЕЦИАЛИЗАЦИЯ ===\n"
-            "Ты работаешь ТОЛЬКО с:\n"
-            "- парсеры\n"
-            "- telegram боты\n"
-            "- python скрипты\n"
-            "- автоматизация\n"
-            "- API интеграции\n\n"
-
-            "Если заказ НЕ относится к этим категориям → оценка не выше 3.\n\n"
-
-            "=== ТВОЯ ЦЕЛЬ ===\n"
-            "Максимум денег за минимум времени.\n\n"
-
-            "=== КАК ДУМАТЬ ===\n"
-            "Спроси себя:\n"
-            "'Я бы потратил на это один из 3 откликов сегодня?'\n\n"
-
-            "Если есть сомнения — снижай оценку.\n\n"
-
-            "=== ХОРОШИЕ ЗАКАЗЫ ===\n"
-            "- четкое ТЗ\n"
-            "- можно сделать за 1-5 часов\n"
-            "- цена от 5000+\n"
-            "- мало откликов (<10)\n\n"
-
-            "=== ПЛОХИЕ ЗАКАЗЫ ===\n"
-            "- дизайн, видео, тексты, маркетинг\n"
-            "- 'доработать', 'переделать'\n"
-            "- непонятный объем\n"
-            "- много откликов (>15)\n\n"
-
-            "=== ШКАЛА ===\n"
-            "10 = идеальный, беру сразу\n"
-            "8-9 = очень хороший\n"
-            "6-7 = сомнительно\n"
-            "0-5 = не беру\n\n"
-
-            "=== ВАЖНО ===\n"
-            "Лучше пропустить, чем потратить отклик на слабый заказ.\n\n"
-
-            "Ответь ТОЛЬКО числом от 0 до 10."
-        )
+        self.score_prompt = """
+        Ты оцениваешь заказы как опытный фрилансер-разработчик (боты, парсинг, backend, автоматизация).
+        
+        Главная задача — поставить ОЦЕНКУ заказу (score от 1 до 10).
+        
+        Где:
+        - 10 = идеально, стоит брать
+        - 1 = мусор, не брать
+        
+        Оцени по:
+        - смыслу задачи
+        - сложности
+        - времени выполнения
+        - адекватности
+        - срочности
+        
+        НЕ учитывай:
+        - цену
+        - отклики
+        
+        ---
+        
+        ПРАВИЛА:
+        
+        1. Если задача НЕ связана с IT (код, разработка, автоматизация) → score <= 3
+        
+        2. Если задача связана с:
+        - докладами
+        - рефератами
+        - текстами
+        - медициной
+        → score <= 2
+        
+        3. Если есть слова:
+        "срочно", "сегодня", "до завтра"
+        → понижай score
+        
+        4. Если задача мутная, непонятная или плохо описана
+        → score <= 4
+        
+        5. Не завышай оценки:
+        - хорошие заказы редкость
+        - большинство заказов — слабые
+        
+        ---
+        
+        Пример:
+        
+        Задача: "Сделать доклад по стоматологии до завтра"
+        
+        Ответ:
+        {
+          "score": 1,
+          "complexity": 6,
+          "time_hours": 10
+        }
+        
+        ---
+        
+        Верни ТОЛЬКО валидный JSON  
+        Без текста, без ```json, без объяснений
+        
+        Строго:
+        
+        {
+          "score": число от 1 до 10,
+          "complexity": число от 1 до 10,
+          "time_hours": число
+        }
+        """
 
     @staticmethod
     def build_prompt(orders: list[Order]) -> str:
         lines = []
 
         for i, o in enumerate(orders, 1):
-            price = " - ".join(map(str, o.prices))
+            price = ' - '.join(map(str, o.prices))
 
             lines.append(
-                f"{i}. {o.title}\n"
-                f"Цена: {price}\n"
-                f"Отклики: {o.responses}\n"
-                f"{o.description[:200]}"
+                f'{i}. {o.title}\n'
+                f'Цена: {price}\n'
+                f'Отклики: {o.responses}\n'
+                f'{o.description[:300]}'
             )
 
-        return "\n\n".join(lines)
+        return '\n\n'.join(lines)
 
-    async def check_order(self, order: Order) -> bool:
-        prompt = (
-            f"{order.title}\n"
-            f"Цена: {' - '.join(map(str, order.prices))}\n"
-            f"Отклики: {order.responses}\n"
-            f"{order.description[:300]}"
-        )
-
-        logger.debug(f"AI SINGLE PROMPT:\n{prompt}")
-
-        try:
-            messages = [
-                {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": prompt},
-            ]
-
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                temperature=0,
-                messages=messages  # type: ignore
-            )
-
-            content = response.choices[0].message.content.strip().upper()
-
-            return "YES" in content
-
-        except Exception as ex:
-            logger.error(f"AI error (single): {ex}")
-            return False
-
-    async def score_order(self, order: Order) -> int:
-        prompt = (
-            f"{order.title}\n"
-            f"Цена: {' - '.join(map(str, order.prices))}\n"
-            f"Отклики: {order.responses}\n"
-            f"{order.description[:300]}"
-        )
-
-        try:
-            messages = [
-                {"role": "system", "content": self.score_prompt},
-                {"role": "user", "content": prompt},
-            ]
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                temperature=0,
-                messages=messages # type: ignore
-            )
-
-            content = response.choices[0].message.content.strip()
-
-            return int(content)
-
-        except Exception as e:
-            logger.error(f"AI score error: {e}")
-            return 0
-
-    async def check_batch(self, orders: list[Order]) -> list[bool]:
+    async def analyze_batch(self, orders: list[Order]) -> list[dict]:
         if not orders:
             return []
 
         prompt = self.build_prompt(orders)
 
-        logger.debug(f"AI PROMPT:\n{prompt}")
+        logger.debug(f'AI PROMPT:\n{prompt}')
 
         try:
-            messages = [
-                {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": prompt},
-            ]
             response = await self.client.chat.completions.create(
                 model=self.model,
                 temperature=0,
-                messages=messages # type: ignore
+                messages=[ # type: ignore
+                    {'role': 'system', 'content': self.score_prompt},
+                    {'role': 'user', 'content': prompt}
+                ]
             )
 
-            content = response.choices[0].message.content.strip()
+            content = response.choices[0].message.content
 
-            lines = content.split("\n")
+            if not content:
+                logger.error('AI вернул пустой ответ')
+                return []
 
-            results = []
-            for line in lines:
-                results.append("YES" in line.upper())
+            data = self.parse_ai_response(content)
+            if not data:
+                logger.error(f'AI вернул не JSON: {content}')
+                return []
 
-            # защита если модель ответила криво
-            if len(results) != len(orders):
-                return [False] * len(orders)
-
-            return results
+            return data
 
         except Exception as ex:
-            print(f"AI error: {ex}")
-            return [False] * len(orders)
+            logger.error(f'AI error: {ex}')
+            return [{'worth_it': False}] * len(orders)
+
+    @staticmethod
+    def parse_ai_response(text: str) -> list[dict]:
+        objects = findall(r"\{.*?\}", text, DOTALL)
+        results = []
+
+        for obj in objects:
+            try:
+                results.append(json.loads(obj))
+            except:
+                results.append(None)
+
+        return results

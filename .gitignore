@@ -1,0 +1,8 @@
+.env
+logs/
+data/last_order*
+__pycache__/
+*.pyc
+.venv/
+.idea/
+.DS_Store
