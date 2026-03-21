@@ -1,88 +1,107 @@
-from openai import OpenAI
-import asyncio
+from openai import AsyncOpenAI
+from json import loads
 
 from app.models.order import Order
+from app.config.settings import OPENROUTER_API_KEY
 
 
-class ResponseGenerator:
-    def __init__(self, api_key: str):
-        self.client = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=api_key,
-        )
+client = AsyncOpenAI(
+    base_url='https://openrouter.ai/api/v1',
+    api_key=OPENROUTER_API_KEY,
+)
 
-        self.models = [
-            "deepseek/deepseek-chat"
-        ]
+PROMPT = """
+Ты фрилансер с опытом, который пишет отклики на заказы.
 
-    async def generate(self, order: Order) -> str | None:
-        prompt = self._build_prompt(order)
-
-        for model in self.models:
-            for _ in range(2):
-                try:
-                    response = await asyncio.to_thread(
-                        self.client.chat.completions.create,
-                        model=model,
-                        messages=[{"role": "user", "content": prompt}],
-                    )
-
-                    text = response.choices[0].message.content.strip()
-
-                    if self._is_valid(text):
-                        return text
-
-                except Exception:
-                    await asyncio.sleep(2)
-
-        return None
-
-    @staticmethod
-    def _is_valid(text: str) -> bool:
-        if not text:
-            return False
-
-        # защита от слишком длинных ответов
-        if len(text.splitlines()) > 8:
-            return False
-
-        # защита от "роботских" ответов
-        bad_phrases = [
-            "я лучший",
-            "имею большой опыт",
-            "готов выполнить",
-            "обращайтесь",
-        ]
-
-        for phrase in bad_phrases:
-            if phrase in text.lower():
-                return False
-
-        return True
-
-    @staticmethod
-    def _build_prompt(order: Order) -> str:
-        return f"""
-Ты — опытный фрилансер (Python, парсинг, автоматизация).
-
-Напиши отклик так, чтобы заказчик выбрал тебя.
-
-ПРАВИЛА:
-- 3–6 строк
-- без воды
-- не как робот
-- не используй шаблонные фразы
-
-ОСНОВНОЕ:
-- покажи, что понял задачу
-- используй детали из описания
-- предложи конкретное решение
-- можно задать 1 короткий вопрос
+ЗАДАЧА:
+Написать короткий отклик, который выглядит как живое сообщение и повышает шанс ответа.
 
 СТИЛЬ:
-живой, как в Telegram
+- 2–3 предложения
+- простой разговорный язык
+- немного “живой”, можно слегка неровно
+- ощущение, что человек пишет быстро, а не вылизывает текст
 
-ЗАКАЗ:
-{order.title}
-{order.description}
+ОБЯЗАТЕЛЬНО:
+- начать с короткого приветствия ("Здравствуйте" или "Добрый день")
+- не делать перенос строки после приветствия
+- писать цельным текстом
+
+ЗАПРЕЩЕНО:
+- "сделаю", "соберу", "разработаю", "настрою", "реализую"
+- "готов", "имею опыт", "смогу"
+- "я бы предложил", "могу предложить"
+- шаблонные и слишком идеальные формулировки
+
+КАК ПИСАТЬ:
+- через опыт ("делал похожее", "парсил такие вещи", "обычно в таких задачах...")
+- НЕ объяснять абстрактно ("это частая проблема")
+- вместо этого писать как из опыта ("там часто вылезают дубли", "обычно всплывает...")
+- упомянуть 1–2 детали из заказа (например: 800 товаров, Excel, дубли)
+- добавить конкретику (как решается задача)
+
+ФОРМУЛИРОВКИ:
+- избегать слишком правильных фраз
+- заменять:
+  "это частая проблема" → "часто всплывает"
+  "без проблем" → "без лишних движений"
+  "удобно обновлять" → "чтобы потом спокойно обновлять"
+
+СТРУКТУРА:
+- не начинать каждое предложение с действия
+- избегать шаблона: "сделаю..., настрою..., реализую..."
+- писать естественно:
+  "там обычно..."
+  "800 товаров спокойно..."
+  "по времени выходит..."
+
+МИКРО-ЖИВОСТЬ:
+- допускается лёгкая разговорность
+- допускается небольшая “неровность”
+- текст не должен выглядеть идеально вылизанным
+
+ЦЕНА:
+- бюджет будет указан в сообщении пользователя
+- цена строго внутри диапазона
+- не ставить максимум без причины
+- оптимально: чуть ниже середины диапазона
+- указывать кратко и уверенно:
+  "по цене 8000" или "стоимость 8000"
+
+ВРЕМЯ:
+- в тексте: 10–14 часов
+- time_days: 1–2 (чаще 1)
+
+ФОРМАТ СТРОГО JSON:
+{
+  "text": "...",
+  "price": int,
+  "time_days": int
+}
 """
+
+
+async def generate(order: Order):
+    response = await client.chat.completions.create(
+        model='openai/gpt-4o-mini',
+        temperature=0.7,
+        messages=[ # type: ignore
+            {'role': 'system', 'content': PROMPT},
+            {
+                'role': 'user',
+                'content': f"""
+        {order.title}
+
+        {order.description}
+
+        Бюджет заказчика: {order.prices[0]} - {order.prices[1]} руб
+        """
+            }
+        ]
+    )
+
+    content = response.choices[0].message.content
+    try:
+        return loads(content)
+    except:
+        return None

@@ -121,7 +121,6 @@ class AIFilter:
             )
 
             content = response.choices[0].message.content
-
             if not content:
                 logger.error('AI вернул пустой ответ')
                 return []
@@ -130,7 +129,6 @@ class AIFilter:
             if not data:
                 logger.error(f'AI вернул не JSON: {content}')
                 return []
-
             return data
 
         except Exception as ex:
@@ -139,12 +137,12 @@ class AIFilter:
 
     @staticmethod
     def parse_ai_response(text: str) -> list[dict]:
-        objects = findall(r"\{.*?\}", text, DOTALL)
+        objects = findall(r"\{.*?}", text, DOTALL)
         results = []
 
         for obj in objects:
             try:
-                results.append(json.loads(obj))
+                results.append(loads(obj))
             except:
                 results.append(None)
 

@@ -3,6 +3,7 @@ from aiogram import Router, F
 
 from app.storage.orders import get_order
 from app.bot.keyboards.inline import get_ai_keyboard
+from app.services.response_generator import generate
 
 
 router = Router()
@@ -11,44 +12,76 @@ generated_texts = {}
 
 @router.callback_query(F.data.startswith('ai:'))
 async def handle_ai(callback: CallbackQuery):
-    order_id = callback.data.split(':')[1]
+    await callback.answer()
+
+    parts = callback.data.split(':')
+    order_id = parts[1]
+    mode = parts[2] if len(parts) > 2 else 'new'
+
     order = get_order(order_id)
 
     if not order:
-        await callback.message.edit_text('Заказ не найден')
-
+        await callback.answer('Заказ не найден')
         return
 
-    text = (
-        "Здравствуйте!\n\n"
-        "Я внимательно изучил ваш заказ.\n"
-        "Могу предложить решение под вашу задачу.\n"
-        "Готов обсудить детали.\n\n"
-        f"{order.url}"
-    )
+    original_text = callback.message.text
 
-    generated_texts[order_id] = text
+    try:
+        result = await generate(order)
+        if not result:
+            await callback.answer("Ошибка генерации", show_alert=True)
+            return
+
+        ai_text = result["text"]
+        price = result["price"]
+        time_days = result["time_days"]
+
+    except Exception:
+        await callback.answer("Ошибка генерации", show_alert=True)
+        return
+
+    generated_texts[order_id] = ai_text
+
+    if mode == 'regen':
+        ai_block = (
+            "\n\n"
+            "🔄 Новый вариант:\n\n"
+            f"{ai_text}\n\n"
+            f"💰 {price} ₽ | ⏱ {time_days} дн.\n"
+            "━━━━━━━━━━━━━━━"
+        )
+    else:
+        ai_block = (
+            "\n\n"
+            "━━━━━━━━━━━━━━━\n"
+            "🚀 Можно отправить так:\n\n"
+            f"{ai_text}\n\n"
+            f"💰 {price} ₽ | ⏱ {time_days} дн.\n"
+            "━━━━━━━━━━━━━━━"
+        )
+
+    new_text = original_text + ai_block
 
     await callback.message.edit_text(
-        text + "\n\n---\n🤖 AI ответ:\n" + ai_text,
+        new_text,
         reply_markup=get_ai_keyboard(order_id)
     )
-
-    await callback.answer()
 
 
 @router.callback_query(F.data.startswith('send:'))
 async def handle_send(callback: CallbackQuery):
-    order_id = callback.data.split(':')[1]
+    await callback.answer('Пока недоступно')
 
-    text = generated_texts.get(order_id)
-
-    if not text:
-        await callback.answer('Нет текста')
-        return
-
-    await callback.message.answer(text)
-    await callback.answer('Отправлено')
+    # order_id = callback.data.split(':')[1]
+    #
+    # text = generated_texts.get(order_id)
+    #
+    # if not text:
+    #     await callback.answer('Нет текста')
+    #     return
+    #
+    # await callback.message.answer(text)
+    # await callback.answer('Отправлено')
 
 
 @router.callback_query(F.data.startswith('skip:'))

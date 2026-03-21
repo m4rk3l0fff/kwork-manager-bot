@@ -37,6 +37,12 @@ def get_ai_keyboard(order_id: str):
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
+                text='🔄 Перегенерировать',
+                callback_data=f'ai:{order_id}:regen'
+            )
+        ],
+        [
+            InlineKeyboardButton(
                 text='✅ Отправить',
                 callback_data=f'send:{order_id}'
             ),

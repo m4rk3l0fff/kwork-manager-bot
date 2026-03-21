@@ -8,6 +8,7 @@ from app.services.order_filters import is_good_order
 from app.services.ai_filter import AIFilter
 from app.bot.sender import send_order
 from app.parsers.kwork_parser import KworkParser
+from app.models.order import Order
 
 
 ai_filter = AIFilter()
@@ -25,7 +26,19 @@ async def parser_loop(bot: Bot, parser: KworkParser) -> None:
 
             logger.info(f'ORDERS | count={len(orders)}')
 
-            filtered_orders = [order for order in reversed(orders) if is_good_order(order)]
+            total_orders = len(orders)
+
+            filtered_orders = [
+                order for order in reversed(orders)
+                if is_good_order(order)
+            ]
+
+            filtered_count = len(filtered_orders)
+            skipped_count = total_orders - filtered_count
+
+            logger.info(
+                f'FILTER | total={total_orders} | passed={filtered_count} | skipped={skipped_count}'
+            )
 
             if not filtered_orders:
                 save_last_order(orders[0])
