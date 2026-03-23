@@ -1,6 +1,6 @@
 .env
 logs/
-data/last_order*
+data/last_order.txt
 __pycache__/
 *.pyc
 .venv/

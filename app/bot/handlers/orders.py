@@ -32,7 +32,7 @@ async def handle_ai(callback: CallbackQuery):
             await callback.answer("Ошибка генерации", show_alert=True)
             return
 
-        ai_text = result["text"]
+        ai_text = f'<code>{result["text"]}</code>'
         price = result["price"]
         time_days = result["time_days"]
 
@@ -64,7 +64,8 @@ async def handle_ai(callback: CallbackQuery):
 
     await callback.message.edit_text(
         new_text,
-        reply_markup=get_ai_keyboard(order_id)
+        reply_markup=get_ai_keyboard(order, order_id),
+        parse_mode='HTML'
     )
 
 

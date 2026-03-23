@@ -1,7 +1,7 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from hashlib import md5
 
-from app.storage.orders import save_order, get_order
+from app.storage.orders import save_order
 from app.models.order import Order
 
 
@@ -33,22 +33,28 @@ def get_order_keyboard(order):
     ])
 
 
-def get_ai_keyboard(order_id: str):
+def get_ai_keyboard(order: Order, order_id: str):
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
-                text='🔄 Перегенерировать',
+                text='🔄 Переген',
                 callback_data=f'ai:{order_id}:regen'
+            ),
+            InlineKeyboardButton(
+                text='❌ Скип',
+                callback_data=f'skip:{order_id}'
             )
         ],
         [
             InlineKeyboardButton(
                 text='✅ Отправить',
                 callback_data=f'send:{order_id}'
-            ),
+            )
+        ],
+        [
             InlineKeyboardButton(
-                text='❌ Скип',
-                callback_data=f'skip:{order_id}'
+                text='🔗 Открыть заказ',
+                url=order.url
             )
         ]
     ])

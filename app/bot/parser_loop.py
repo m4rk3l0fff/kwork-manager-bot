@@ -8,7 +8,6 @@ from app.services.order_filters import is_good_order
 from app.services.ai_filter import AIFilter
 from app.bot.sender import send_order
 from app.parsers.kwork_parser import KworkParser
-from app.models.order import Order
 
 
 ai_filter = AIFilter()
